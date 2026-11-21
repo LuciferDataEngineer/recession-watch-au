@@ -242,6 +242,115 @@ def _centroid(ring: list) -> tuple[float, float]:
     return sum(xs) / len(xs), sum(ys) / len(ys)
 
 
+def _projected(ring: list) -> list[tuple[float, float]]:
+    return [_project(lon, lat) for lon, lat in ring]
+
+
+def _contains(x: float, y: float, pts: list[tuple[float, float]]) -> bool:
+    inside = False
+    j = len(pts) - 1
+    for i, (xi, yi) in enumerate(pts):
+        xj, yj = pts[j]
+        if (yi > y) != (yj > y):
+            cross = (xj - xi) * (y - yi) / ((yj - yi) or 1e-12) + xi
+            if x < cross:
+                inside = not inside
+        j = i
+    return inside
+
+
+def _label_box(x: float, y: float, text: str) -> tuple[float, float, float, float]:
+    """Baseline-centred box, wide enough for Avenir Next as well as the fallback font."""
+    half = len(text) * 9.2 / 2 + 3
+    return x - half, y - 14, x + half, y + 5
+
+
+def _box_inside(box: tuple[float, float, float, float], pts: list[tuple[float, float]]) -> bool:
+    x0, y0, x1, y1 = box
+    for px in (x0 + 1, (x0 + x1) / 2, x1 - 1):
+        for py in (y0 + 1, (y0 + y1) / 2, y1 - 1):
+            if not _contains(px, py, pts):
+                return False
+    return True
+
+
+def _box_clear(box: tuple[float, float, float, float], rings: list[list[tuple[float, float]]]) -> bool:
+    x0, y0, x1, y1 = box
+    samples = [
+        (x0, y0),
+        (x1, y0),
+        (x0, y1),
+        (x1, y1),
+        ((x0 + x1) / 2, (y0 + y1) / 2),
+        ((x0 + x1) / 2, y0),
+        ((x0 + x1) / 2, y1),
+        (x0, (y0 + y1) / 2),
+        (x1, (y0 + y1) / 2),
+    ]
+    return all(not any(_contains(px, py, ring) for ring in rings) for px, py in samples)
+
+
+def _refine_label(
+    x: float,
+    y: float,
+    text: str,
+    pts: list[tuple[float, float]],
+) -> tuple[float, float]:
+    """Prefer a spot whose label still fits if the type is a little wider."""
+
+    def fits(px: float, py: float) -> bool:
+        left, top, right, bottom = _label_box(px, py, text)
+        return _box_inside((left - 3, top - 2, right + 3, bottom + 2), pts)
+
+    if fits(x, y):
+        return x, y
+    best = None
+    best_distance = float("inf")
+    for dx in range(-20, 22, 2):
+        for dy in range(-16, 18, 2):
+            distance = dx * dx + dy * dy
+            if distance < best_distance and fits(x + dx, y + dy):
+                best = (x + dx, y + dy)
+                best_distance = distance
+    return best or (x, y)
+
+
+def _place_state_label(
+    short: str,
+    pts: list[tuple[float, float]],
+    rings: list[list[tuple[float, float]]],
+) -> tuple[float, float, tuple[float, float] | None]:
+    """Return a baseline point inside the state, or a leader target outside it."""
+    cx = sum(p[0] for p in pts) / len(pts)
+    cy = sum(p[1] for p in pts) / len(pts)
+    for radius in [0, *range(8, 120, 8)]:
+        steps = 1 if radius == 0 else 20
+        for step in range(steps):
+            angle = (step / steps) * math.tau - math.pi / 2
+            x = cx + math.cos(angle) * radius
+            y = cy + math.sin(angle) * radius * 0.85
+            if _box_inside(_label_box(x, y, short), pts):
+                refined = _refine_label(x, y, short, pts)
+                return refined[0], refined[1], None
+    view_w, view_h = 820.0, 640.0
+    best = None
+    best_distance = float("inf")
+    for y in range(40, int(view_h) - 24, 8):
+        for x in range(40, int(view_w) - 24, 8):
+            box = _label_box(x, y, short)
+            if box[0] < 8 or box[1] < 8 or box[2] > view_w - 8 or box[3] > view_h - 8:
+                continue
+            if not _box_clear(box, rings):
+                continue
+            distance = (x - cx) ** 2 + (y - cy) ** 2
+            if distance < best_distance:
+                best_distance = distance
+                best = (float(x), float(y))
+    if best is None:
+        best = (min(view_w - 36, cx + 48), min(view_h - 20, cy + 28))
+    return best[0], best[1], (cx, cy)
+
+
 def _heat(t: float) -> str:
     t = min(1.0, max(0.0, t))
     # teal -> amber -> red
@@ -270,7 +379,7 @@ def map_svg(states: list[dict]) -> str:
     by_short = {row["short"]: row for row in states}
     geo = json.loads(GEOJSON.read_text())
     shapes = []
-    labels = []
+    prepared = []
     for feature in geo["features"]:
         short = NAME_TO_SHORT.get(feature["properties"]["name"])
         if short is None or short not in by_short:
@@ -289,18 +398,18 @@ def map_svg(states: list[dict]) -> str:
             f'data-jobs="{jobs:.3f}" data-unemp="{unemp:.3f}" data-demand="{demand:.3f}" '
             f'd="{_path(ring)}" fill="{_heat(pressure)}"><title>{row["name"]}</title></path>'
         )
-        x, y = _centroid(ring)
-        if short == "ACT":
+        prepared.append((short, _projected(ring)))
+    all_rings = [pts for _, pts in prepared]
+    labels = []
+    for short, pts in prepared:
+        x, y, leader = _place_state_label(short, pts, all_rings)
+        if leader is not None:
+            # Stop the leader at the label box so the stroke does not cross the letters.
+            half = len(short) * 9.2 / 2 + 6
             labels.append(
-                f'<line x1="{x:.1f}" y1="{y:.1f}" x2="{x+46:.1f}" y2="{y+28:.1f}" class="leader"/>'
-                f'<text class="map-label" x="{x+50:.1f}" y="{y+32:.1f}" text-anchor="start">{short}</text>'
+                f'<line x1="{leader[0]:.1f}" y1="{leader[1]:.1f}" x2="{x - half:.1f}" y2="{y - 4:.1f}" class="leader"/>'
             )
-        elif short == "TAS":
-            labels.append(f'<text class="map-label" x="{x:.1f}" y="{y+16:.1f}" text-anchor="middle">{short}</text>')
-        elif short == "VIC":
-            labels.append(f'<text class="map-label" x="{x:.1f}" y="{y+8:.1f}" text-anchor="middle">{short}</text>')
-        else:
-            labels.append(f'<text class="map-label" x="{x:.1f}" y="{y:.1f}" text-anchor="middle">{short}</text>')
+        labels.append(f'<text class="map-label" x="{x:.1f}" y="{y:.1f}" text-anchor="middle">{short}</text>')
     return (
         '<svg class="map" viewBox="0 0 820 640" role="img" aria-label="Australia, states coloured by pressure">'
         + "".join(shapes)
@@ -309,44 +418,278 @@ def map_svg(states: list[dict]) -> str:
     )
 
 
+def _period_parts(token: str) -> tuple[int, int]:
+    cleaned = (token or "").replace("-", "")
+    if "Q" in cleaned:
+        year, quarter = cleaned.split("Q", 1)
+        if year.isdigit() and quarter.isdigit():
+            return int(year), int(quarter) * 3
+    if len(cleaned) >= 6 and cleaned[:4].isdigit() and cleaned[4:6].isdigit():
+        return int(cleaned[:4]), int(cleaned[4:6])
+    return 0, 0
+
+
+def _digits(step: float) -> int:
+    if abs(step - round(step)) > 1e-6:
+        return 1 if step >= 0.1 else 2
+    if step >= 1:
+        return 0
+    if step >= 0.1:
+        return 1
+    return 2
+
+
+def _nice_ticks(low: float, high: float) -> list[float]:
+    span = high - low
+    if span <= 0:
+        return [low]
+
+    def step_for(target: int) -> float:
+        raw = span / target
+        magnitude = 10 ** math.floor(math.log10(raw))
+        residual = raw / magnitude
+        if residual <= 1:
+            nice = 1
+        elif residual <= 2:
+            nice = 2
+        elif residual <= 2.5:
+            nice = 2.5
+        elif residual <= 5:
+            nice = 5
+        else:
+            nice = 10
+        return nice * magnitude
+
+    def build(step: float) -> list[float]:
+        start = math.ceil((low - step * 1e-8) / step) * step
+        values = []
+        cursor = start
+        for _ in range(16):
+            if cursor > high + step * 1e-6:
+                break
+            if low - step * 1e-6 <= cursor <= high + step * 1e-6:
+                values.append(round(cursor, 6))
+            cursor += step
+        return values
+
+    step = step_for(4)
+    values = build(step)
+    if len(values) > 5:
+        step *= 2
+        values = build(step)
+    if len(values) < 3:
+        step /= 2
+        values = build(step)
+    if len(values) > 5:
+        values = [values[0], values[len(values) // 2], values[-1]]
+    return values
+
+
+def _point_label(point: dict) -> str:
+    return point["label"] if point.get("label") else pretty_period(point.get("period", ""))
+
+
+def _x_tick_indices(points: list[dict]) -> list[int]:
+    parsed = [_period_parts(point.get("period", "")) for point in points]
+    if any(year == 0 for year, _month in parsed):
+        middle = len(points) // 2
+        return sorted({0, middle, len(points) - 1})
+    span = (parsed[-1][0] - parsed[0][0]) * 12 + (parsed[-1][1] - parsed[0][1])
+    indices: list[int] = []
+    if span > 27:
+        seen_years: list[int] = []
+        for _index, (year, _month) in enumerate(parsed):
+            if year not in seen_years:
+                seen_years.append(year)
+        for year in seen_years:
+            group = [index for index, (item_year, _month) in enumerate(parsed) if item_year == year]
+            # July keeps neighbouring year labels about twelve months apart.
+            best = min(group, key=lambda index: (abs(parsed[index][1] - 7), index))
+            indices.append(best)
+    else:
+        anchors = (1, 4, 7, 10) if any(month in (1, 4, 7, 10) for _year, month in parsed) else (3, 6, 9, 12)
+        seen: set[tuple[int, int]] = set()
+        for index, (year, month) in enumerate(parsed):
+            if month not in anchors:
+                continue
+            key = (year, (month - 1) // 3)
+            if key in seen:
+                continue
+            seen.add(key)
+            indices.append(index)
+    return indices
+
+
 def line_chart(points: list[dict], title: str, aria: str, zero: bool = True, formatter=signed_pct) -> str:
     values = [p["value"] for p in points if p.get("value") is not None and math.isfinite(p["value"])]
     if len(values) < 2:
         return f'<div class="chart-card"><h3>{title}</h3><p>Not enough history.</p></div>'
     low, high = min(values + ([0] if zero else [])), max(values + ([0] if zero else []))
-    pad = max(0.2, (high - low) * 0.15)
+    pad = max(0.15, (high - low) * 0.08)
     low, high = low - pad, high + pad
-    width, height = 640, 260
-    left, right, top, bottom = 46, 16, 16, 36
+    ticks = _nice_ticks(low, high)
+    if ticks:
+        low = min(low, ticks[0])
+        high = max(high, ticks[-1])
+    # Room above and below the series so the end labels sit inside the plot, off the line.
+    width, height = 640, 300
+    left, right, top, bottom = 72, 20, 12, 42
     plot_w, plot_h = width - left - right, height - top - bottom
+    label_room, bottom_room = 36, 24
+    span = high - low or 1
 
-    def xy(i, value):
+    def y_at(value: float) -> float:
+        usable_top = top + label_room
+        usable_h = plot_h - label_room - bottom_room
+        return usable_top + usable_h * (1 - (value - low) / span)
+
+    def xy(i: int, value: float) -> tuple[float, float]:
         x = left + plot_w * i / (len(points) - 1)
-        y = top + plot_h * (1 - (value - low) / (high - low))
-        return x, y
+        return x, y_at(value)
 
+    parts: list[str] = []
+    step = abs(ticks[1] - ticks[0]) if len(ticks) > 1 else 1
+    for tick in ticks:
+        y = y_at(tick)
+        if y < top + 8 or y > height - bottom - 8:
+            continue
+        parts.append(f'<line class="grid" x1="{left}" y1="{y:.1f}" x2="{width - right:.1f}" y2="{y:.1f}"/>')
+        parts.append(
+            f'<text class="axis" x="{left - 8}" y="{y:.1f}" text-anchor="end" dominant-baseline="middle">'
+            f"{formatter(tick, _digits(step))}</text>"
+        )
+    if zero and low < 0 < high:
+        zero_y = y_at(0)
+        parts.append(
+            f'<line class="zero" x1="{left}" y1="{zero_y:.1f}" x2="{width - right:.1f}" y2="{zero_y:.1f}"/>'
+        )
+    series: list[tuple[float, float]] = []
     coords = []
-    dots = []
-    for i, point in enumerate(points):
-        x, y = xy(i, point["value"])
+    for index, point in enumerate(points):
+        x, y = xy(index, point["value"])
+        series.append((x, y))
         coords.append(f"{x:.1f},{y:.1f}")
-        if i == len(points) - 1 or i == 0:
-            dots.append(
-                f'<text class="direct" x="{x:.1f}" y="{y-8:.1f}" text-anchor="{"start" if i==0 else "end"}">{formatter(point["value"])}</text>'
-            )
-    zero_y = top + plot_h * (1 - (0 - low) / (high - low)) if zero and low < 0 < high else None
-    grid = f'<line x1="{left}" y1="{zero_y:.1f}" x2="{width-right}" y2="{zero_y:.1f}" class="zero"/>' if zero_y else ""
-    start_label = points[0]["label"] if "label" in points[0] else pretty_period(points[0]["period"])
-    end_label = points[-1]["label"] if "label" in points[-1] else pretty_period(points[-1]["period"])
+    parts.append(f'<polyline fill="none" class="series" points="{" ".join(coords)}"/>')
+
+    def _tick_choices(point: dict) -> list[str]:
+        full = _point_label(point)
+        parts_of = full.split()
+        if len(parts_of) == 2 and len(parts_of[1]) == 4 and parts_of[1].isdigit():
+            short = f"{parts_of[0]} {parts_of[1][2:]}"
+            first = _period_parts(points[0].get("period", ""))
+            last = _period_parts(points[-1].get("period", ""))
+            span_months = (last[0] - first[0]) * 12 + (last[1] - first[1])
+            # Under about two years, "Oct 24" fits a quarterly tick. Longer series use the full month or the year.
+            if span_months <= 27:
+                return [short]
+            return [full, parts_of[1]]
+        return [full]
+
+    placed: list[tuple[float, float]] = []
+    used_labels: set[str] = set()
+    for index in _x_tick_indices(points):
+        x, _y = xy(index, points[index]["value"])
+        drawn = None
+        for label in _tick_choices(points[index]):
+            if label in used_labels:
+                continue
+            text_w = len(label) * 9.2
+            anchor = "middle"
+            edge_l, edge_r = x - text_w / 2, x + text_w / 2
+            if edge_l < 2:
+                anchor, edge_l, edge_r = "start", x, x + text_w
+            if edge_r > width - 2:
+                anchor, edge_l, edge_r = "end", x - text_w, x
+            if any(not (edge_r < kept_l - 8 or edge_l > kept_r + 8) for kept_l, kept_r in placed):
+                continue
+            drawn = (label, anchor, edge_l, edge_r)
+            break
+        if drawn is None:
+            continue
+        label, anchor, edge_l, edge_r = drawn
+        placed.append((edge_l, edge_r))
+        used_labels.add(label)
+        parts.append(
+            f'<text class="axis" x="{x:.1f}" y="{height - 14}" text-anchor="{anchor}">{label}</text>'
+        )
+
+    def _line_hits(box: tuple[float, float, float, float], pad: float = 6) -> bool:
+        x0, y0, x1, y1 = box[0] - pad, box[1] - pad, box[2] + pad, box[3] + pad
+        for (ax, ay), (bx, by) in zip(series, series[1:]):
+            if max(ax, bx) < x0 or min(ax, bx) > x1:
+                continue
+            for step_index in range(11):
+                sample = step_index / 10
+                sx = ax + (bx - ax) * sample
+                sy = ay + (by - ay) * sample
+                if x0 <= sx <= x1 and y0 <= sy <= y1:
+                    return True
+        return False
+
+    def callout(index: int) -> str:
+        x, y = series[index]
+        text = formatter(points[index]["value"])
+        text_w = max(28.0, len(text) * 9.2)
+        ascent, descent = 15.0, 5.0
+        other = 1 if index == 0 else index - 1
+        _ox, oy = series[other]
+        signs = (-1, 1) if oy >= y else (1, -1)
+        plot_left, plot_right = float(left), float(width - right)
+        plot_top, plot_bottom = float(top), float(height - bottom)
+        chosen = None
+        for sign in signs:
+            for gap in (20, 32, 46, 60):
+                for shift in (10, 28, 46):
+                    baseline = y + sign * gap
+                    if index == 0:
+                        anchor = "start"
+                        lx = min(max(x + shift, plot_left), plot_right - text_w)
+                        box = (lx, baseline - ascent, lx + text_w, baseline + descent)
+                    else:
+                        anchor = "end"
+                        lx = max(min(x - shift, plot_right), plot_left + text_w)
+                        box = (lx - text_w, baseline - ascent, lx, baseline + descent)
+                    inside = (
+                        box[0] >= plot_left - 0.5
+                        and box[2] <= plot_right + 0.5
+                        and box[1] >= plot_top
+                        and box[3] <= plot_bottom
+                    )
+                    if inside and not _line_hits(box):
+                        chosen = (lx, baseline, anchor)
+                        break
+                if chosen:
+                    break
+            if chosen:
+                break
+        if chosen is None:
+            anchor = "start" if index == 0 else "end"
+            lx = x + 10 if index == 0 else x - 10
+            baseline = min(plot_bottom - descent, max(plot_top + ascent, y - 20))
+            chosen = (lx, baseline, anchor)
+        lx, baseline, anchor = chosen
+        return (
+            f'<text class="direct end-label" x="{lx:.1f}" y="{baseline:.1f}" text-anchor="{anchor}">{text}</text>'
+        )
+
+    parts.append(callout(0))
+    parts.append(callout(len(points) - 1))
     return (
         f'<div class="chart-card"><h3>{title}</h3>'
-        f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="{aria}">'
-        f"{grid}<polyline fill=\"none\" class=\"series\" points=\"{' '.join(coords)}\"/>"
-        + "".join(dots)
-        + f'<text class="axis" x="{left}" y="{height-8}">{start_label}</text>'
-        f'<text class="axis" x="{width-right}" y="{height-8}" text-anchor="end">{end_label}</text>'
-        "</svg></div>"
+        f'<svg class="line-chart" viewBox="0 0 {width} {height}" role="img" aria-label="{aria}" '
+        f'data-plot-left="{left}" data-plot-top="{top}" data-plot-right="{width - right}" '
+        f'data-plot-bottom="{height - bottom}">'
+        f'<rect class="plot-bounds" x="{left}" y="{top}" width="{plot_w}" height="{plot_h}" fill="none"/>'
+        + "".join(parts)
+        + "</svg></div>"
     )
+
+
+def _estimate_axis_label(label: str) -> str:
+    parts = label.split()
+    if len(parts) == 2 and len(parts[1]) == 4 and parts[1].isdigit():
+        return f"{parts[0]} {parts[1][2:]} (est)"
+    return f"{label} (est)"
 
 
 def fan_chart(history: list[dict], forecast: list[dict]) -> str:
@@ -357,46 +700,81 @@ def fan_chart(history: list[dict], forecast: list[dict]) -> str:
         if "low" in point:
             values.extend([point["low"], point["high"]])
     low, high = min(values), max(values)
-    pad = max(0.25, (high - low) * 0.18)
+    pad = max(0.2, (high - low) * 0.16)
     low, high = low - pad, high + pad
-    width, height = 720, 320
-    left, right, top, bottom = 44, 20, 18, 42
+    # Forecast slots are wider than history slots so "Sep 26 (est)" and "Dec 26 (est)" do not collide.
+    width, height = 920, 372
+    left, right, top, bottom = 28, 22, 8, 56
     plot_w, plot_h = width - left - right, height - top - bottom
-    n = len(points)
+    n_history = len(history)
+    forecast_pitch = 118
+    history_pitch = (plot_w - forecast_pitch * len(forecast)) / max(n_history, 1)
+    label_room = 28
+    span = high - low or 1
 
-    def x_at(i):
-        return left + plot_w * (i + 0.5) / n
+    def x_at(i: int) -> float:
+        if i < n_history:
+            return left + history_pitch * (i + 0.5)
+        return left + history_pitch * n_history + forecast_pitch * (i - n_history + 0.5)
 
-    def y_at(value):
-        return top + plot_h * (1 - (value - low) / (high - low))
+    def y_at(value: float) -> float:
+        usable_top = top + label_room
+        usable_h = plot_h - label_room - 8
+        return usable_top + usable_h * (1 - (value - low) / span)
 
     bars = []
     labels = []
+    base = y_at(0)
     for i, point in enumerate(points):
         x = x_at(i)
         y = y_at(point["value"])
-        base = y_at(0)
         color = "#8eb6ff" if point.get("kind") == "history" else "#f6c453"
-        if "low" in point:
-            y0, y1 = y_at(point["high"]), y_at(point["low"])
-            bars.append(f'<line x1="{x:.1f}" y1="{y0:.1f}" x2="{x:.1f}" y2="{y1:.1f}" class="whisker"/>')
-            bars.append(f'<line x1="{x-8:.1f}" y1="{y0:.1f}" x2="{x+8:.1f}" y2="{y0:.1f}" class="whisker"/>')
-            bars.append(f'<line x1="{x-8:.1f}" y1="{y1:.1f}" x2="{x+8:.1f}" y2="{y1:.1f}" class="whisker"/>')
+        whisker_top = None
+        if "high" in point:
+            whisker_top = y_at(point["high"])
+            whisker_bottom = y_at(point["low"])
+            bars.append(
+                f'<line x1="{x:.1f}" y1="{whisker_top:.1f}" x2="{x:.1f}" y2="{whisker_bottom:.1f}" class="whisker"/>'
+            )
+            bars.append(
+                f'<line x1="{x - 8:.1f}" y1="{whisker_top:.1f}" x2="{x + 8:.1f}" y2="{whisker_top:.1f}" class="whisker"/>'
+            )
+            bars.append(
+                f'<line x1="{x - 8:.1f}" y1="{whisker_bottom:.1f}" x2="{x + 8:.1f}" y2="{whisker_bottom:.1f}" class="whisker"/>'
+            )
+        bar_height = abs(base - y)
         bar_y = min(y, base)
+        if bar_height < 7:
+            # A flat quarter would otherwise disappear into the axis.
+            bar_height = 7
+            bar_y = base - 3.5
         bars.append(
-            f'<rect x="{x-10:.1f}" y="{bar_y:.1f}" width="20" height="{abs(base-y):.1f}" rx="3" fill="{color}"/>'
+            f'<rect data-value="{point["value"]:.4f}" x="{x - 10:.1f}" y="{bar_y:.1f}" '
+            f'width="20" height="{bar_height:.1f}" rx="3" fill="{color}"/>'
         )
-        anchor = "middle"
-        label_y = y - 10 if point["value"] >= 0 else y + 16
-        bars.append(f'<text class="direct" x="{x:.1f}" y="{label_y:.1f}" text-anchor="{anchor}">{signed_pct(point["value"])}</text>')
-        if point.get("kind") == "nowcast" or i % 4 == 0:
-            labels.append(f'<text class="axis" x="{x:.1f}" y="{height-12}" text-anchor="middle">{point["label"]}</text>')
-    zero = y_at(0)
+        if whisker_top is not None:
+            label_y = whisker_top - 16
+        elif point["value"] >= 0:
+            label_y = bar_y - 14
+        else:
+            label_y = bar_y + bar_height + 16
+        label_y = max(16, label_y)
+        bars.append(
+            f'<text class="direct" x="{x:.1f}" y="{label_y:.1f}" text-anchor="middle">{signed_pct(point["value"])}</text>'
+        )
+        if point.get("kind") == "nowcast":
+            labels.append(
+                f'<text class="axis" x="{x:.1f}" y="{height - 18}" text-anchor="middle">{_estimate_axis_label(point["label"])}</text>'
+            )
+        elif i % 4 == 0:
+            labels.append(
+                f'<text class="axis" x="{x:.1f}" y="{height - 18}" text-anchor="middle">{point["label"]}</text>'
+            )
     return (
         '<div class="chart-card hero-chart"><h3>Economic growth, and the estimate for the next two quarters</h3>'
         '<p class="chart-note">Blue bars are the official figures. Amber bars are this page’s estimate. The range is the usual miss since 2023, not a 2020-sized shock.</p>'
-        f'<svg viewBox="0 0 {width} {height}" role="img" aria-label="Quarterly economic growth and the estimate ahead">'
-        f'<line x1="{left}" y1="{zero:.1f}" x2="{width-right}" y2="{zero:.1f}" class="zero"/>'
+        f'<svg class="growth-chart" viewBox="0 0 {width} {height}" role="img" aria-label="Quarterly economic growth and the estimate ahead">'
+        f'<line x1="{left}" y1="{base:.1f}" x2="{width - right}" y2="{base:.1f}" class="zero"/>'
         + "".join(bars)
         + "".join(labels)
         + "</svg></div>"
@@ -456,19 +834,27 @@ def bar_chart(
 def gauge_svg(probability: float) -> str:
     probability = 0 if not math.isfinite(probability) else min(1.0, max(0.0, probability))
     angle = math.pi * (1 - probability)
-    cx, cy, radius = 140, 132, 96
+    cx, cy, radius = 140, 118, 86
     x = cx + radius * math.cos(angle)
     y = cy - radius * math.sin(angle)
     color = _heat(probability)
+    reading = odds(probability)
+    note = (
+        f"{reading} is the chance the next two quarters of GDP both shrink. "
+        "The needle sits toward Low when that chance is small, and toward High when it is not. "
+        "Beside this, blue bars are the official figures. Amber bars are this page’s estimate, "
+        "and the whisker on each amber bar is the usual miss."
+    )
     return (
         '<div class="chart-card gauge-card"><h3>Chance of two shrinking quarters in a row</h3>'
-        '<svg viewBox="0 0 280 190" role="img" aria-label="Recession chance gauge">'
-        f'<path d="M44,132 A96,96 0 0 1 236,132" fill="none" stroke="#243044" stroke-width="16" stroke-linecap="round"/>'
+        '<svg viewBox="0 0 280 176" role="img" aria-label="Recession chance gauge">'
+        f'<path d="M54,118 A86,86 0 0 1 226,118" fill="none" stroke="#243044" stroke-width="16" stroke-linecap="round"/>'
         f'<line x1="{cx}" y1="{cy}" x2="{x:.1f}" y2="{y:.1f}" stroke="{color}" stroke-width="6" stroke-linecap="round"/>'
         f'<circle cx="{cx}" cy="{cy}" r="6" fill="{color}"/>'
-        f'<text class="gauge-value" x="{cx}" y="86" text-anchor="middle">{odds(probability)}</text>'
-        '<text class="axis" x="44" y="156">Low</text><text class="axis" x="236" y="156" text-anchor="end">High</text>'
-        "</svg></div>"
+        f'<text class="gauge-value" x="{cx}" y="78" text-anchor="middle">{reading}</text>'
+        '<text class="axis" x="48" y="146">Low</text><text class="axis" x="232" y="146" text-anchor="end">High</text>'
+        "</svg>"
+        f'<p class="gauge-note">{note}</p></div>'
     )
 
 
@@ -619,11 +1005,24 @@ def render(payload: dict) -> str:
         "the chance of a shrinking December quarter at 30%, and the chance of two shrinking quarters at 5 to 6%. "
         "Those are their figures, not this page’s."
     )
+    highest_unemp = max(states, key=lambda row: _finite(row["unemp"]))
+    weakest_demand = min(states, key=lambda row: _finite(row["sfd_qoq"], 99))
+    if highest_unemp["short"] == weakest_demand["short"]:
+        state_contrast = (
+            f"{highest_unemp['name']} has the highest unemployment, {pct(highest_unemp['unemp'])}, "
+            f"and the weakest June-quarter demand, {signed_pct(weakest_demand['sfd_qoq'])}. "
+        )
+    else:
+        state_contrast = (
+            f"{highest_unemp['name']} has the highest unemployment, {pct(highest_unemp['unemp'])}. "
+            f"{weakest_demand['name']} has the weakest June-quarter demand, {signed_pct(weakest_demand['sfd_qoq'])}. "
+        )
     state_means = (
-        f"{weakest['name']} is where the strain shows up first on this scorecard: "
+        f"{weakest['name']} ranks highest on the combined score: "
         f"jobs {signed_pct(weakest['jobs_3m_pct'])} over three months, unemployment {pct(weakest['unemp'])}, "
         f"and June-quarter demand {signed_pct(weakest['sfd_qoq'])}. "
-        "October’s job losses were spread across several states, so a national average hides the patchiness. "
+        + state_contrast
+        + "October’s job losses were spread across several states, so a national average hides the patchiness. "
         "Northern Territory and the ACT use the Bureau’s smoothed jobs count, because it does not publish the same adjusted series there."
     )
     industry_means = (
@@ -646,6 +1045,8 @@ def render(payload: dict) -> str:
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>Recession watch · Australia</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml"/>
+<link rel="icon" href="favicon.ico" sizes="32x32"/>
 <style>
 :root {{
   --bg:#0c121b; --card:#151d2b; --line:#2c3a50; --text:#eef3f8; --muted:#9aabc2;
@@ -671,22 +1072,27 @@ main {{ max-width:1120px; margin:0 auto; padding:18px; }}
 .kpi {{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 12px 10px; min-width:0; }}
 .kpi .kicker {{ margin:0; color:var(--muted); font-size:13px; }}
 .kpi .value {{ margin:4px 0; font-size:clamp(1.35rem, 2.2vw, 2.05rem); font-weight:720; letter-spacing:-.03em; white-space:nowrap; line-height:1.1; }}
-.kpi .take {{ margin:0; color:var(--muted); font-size:13.5px; }}
+.kpi .take {{ margin:0; color:var(--muted); font-size:15px; }}
 .kpi.bad .value {{ color:var(--red); }}
 .kpi.warn .value {{ color:var(--amber); }}
 .kpi.ok .value {{ color:var(--teal); }}
-.hero {{ display:grid; grid-template-columns:280px 1fr; gap:12px; }}
-.grid-2 {{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; }}
+.hero {{ display:grid; grid-template-columns:280px 1fr; gap:12px; align-items:stretch; }}
+.grid-2 {{ display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px; align-items:start; }}
 .chart-card, .means, details {{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px 14px; }}
 .chart-card h3, .means h2 {{ margin:0 0 4px; font-size:1.02rem; }}
 .chart-note, .means p {{ color:var(--muted); margin:4px 0 8px; }}
+.gauge-card {{ display:flex; flex-direction:column; justify-content:space-between; }}
+.gauge-note {{ color:var(--muted); margin:12px 0 0; font-size:15px; }}
 svg {{ width:100%; height:auto; display:block; }}
 .series {{ stroke:var(--blue); stroke-width:2.5; }}
-.zero {{ stroke:#3d4d66; stroke-width:1; }}
+.grid {{ stroke:#31425a; stroke-width:1; }}
+.zero {{ stroke:#4a5d78; stroke-width:1.25; }}
 .whisker {{ stroke:var(--amber); stroke-width:2; }}
-.direct {{ fill:var(--text); font-size:12px; }}
-.axis, .bar-label, .map-label {{ fill:var(--muted); font-size:12px; }}
+.direct {{ fill:var(--text); font-size:13px; }}
+.axis, .bar-label, .map-label {{ fill:var(--muted); font-size:13px; }}
 .map-label {{ fill:var(--text); font-size:13px; font-weight:650; }}
+.line-chart .axis, .line-chart .direct {{ font-size:17px; }}
+.growth-chart .axis, .growth-chart .direct {{ font-size:15px; }}
 .leader {{ stroke:var(--muted); stroke-width:1; }}
 .state {{ stroke:#0c121b; stroke-width:1.2; }}
 .gauge-value {{ fill:var(--text); font-size:42px; font-weight:720; }}
@@ -709,7 +1115,7 @@ th {{ color:var(--muted); font-weight:600; }}
 }}
 @media (max-width:560px) {{
   main {{ padding:12px; }}
-  .kpi .take {{ font-size:13px; }}
+  .kpi .take {{ font-size:14px; }}
   th, td {{ white-space:normal; }}
 }}
 </style>
