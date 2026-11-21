@@ -3,7 +3,16 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-docker compose up -d --build
+# BuildKit's default provenance attestation publishes a manifest list.
+# Compose on GitHub-hosted runners can then start the attestation blob,
+# which fails with "exec /app/kestra: exec format error".
+export BUILDX_NO_DEFAULT_ATTESTATIONS=1
+if docker compose build --help 2>&1 | grep -q -- '--provenance'; then
+  docker compose build --provenance=false
+else
+  docker compose build
+fi
+docker compose up -d --no-build
 echo "waiting for Kestra"
 ready=0
 for _ in $(seq 1 60); do

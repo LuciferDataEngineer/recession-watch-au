@@ -80,6 +80,8 @@ jobs:
   kestra:
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    env:
+      BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
     steps:
       - uses: actions/checkout@v4
       - name: Run the flow on Kestra

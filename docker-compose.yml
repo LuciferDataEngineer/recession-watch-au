@@ -1,6 +1,8 @@
 services:
   kestra:
-    build: .
+    build:
+      context: .
+    platform: linux/amd64
     image: recession-watch-kestra:local
     user: root
     command: server local
