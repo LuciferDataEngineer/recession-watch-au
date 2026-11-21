@@ -8,4 +8,4 @@ tasks:
     taskRunner:
       type: io.kestra.plugin.core.runner.Process
     commands:
-      - cd /work && /usr/bin/python3 -m recession_watch run --from-snapshot --max-em-iter 8 --backtest-iter 6
+      - bash -lc "cd /work && PYTHONPATH=src /usr/bin/python3 -m recession_watch run --from-snapshot --max-em-iter 8 --backtest-iter 6"

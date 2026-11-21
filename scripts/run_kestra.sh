@@ -49,6 +49,9 @@ for _ in $(seq 1 80); do
   case "$state" in
     SUCCESS) exit 0 ;;
     FAILED|KILLED|CANCELLED)
+      echo "---- task log ----"
+      curl -fsS -u "$AUTH" "http://127.0.0.1:8080/api/v1/logs/${exec_id}" || true
+      echo
       docker compose logs --tail 40
       exit 1
       ;;
