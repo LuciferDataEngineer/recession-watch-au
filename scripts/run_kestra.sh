@@ -13,13 +13,16 @@ else
   docker compose build
 fi
 docker compose up -d --no-build
+AUTH="admin@kestra.io:Admin1234"
 echo "waiting for Kestra"
 ready=0
 for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:8080/api/v1/configs" >/dev/null 2>&1; then
+  code=$(curl -s -o /dev/null -w "%{http_code}" -u "$AUTH" "http://127.0.0.1:8080/api/v1/configs" || true)
+  if [[ "$code" == "200" ]]; then
     ready=1
     break
   fi
+  echo "health HTTP ${code:-none}"
   sleep 3
 done
 if [[ "$ready" != "1" ]]; then
@@ -28,24 +31,20 @@ if [[ "$ready" != "1" ]]; then
   exit 1
 fi
 
-import_flow() {
-  docker compose exec -T kestra /app/kestra flow namespace update au.macro /work/kestra/flows \
-    && return 0
-  curl -fsS -X POST "http://127.0.0.1:8080/api/v1/flows" \
+curl -fsS -u "$AUTH" -X POST "http://127.0.0.1:8080/api/v1/flows" \
+  -H "Content-Type: application/x-yaml" \
+  --data-binary @kestra/flows/recession_watch.yml \
+  || curl -fsS -u "$AUTH" -X PUT "http://127.0.0.1:8080/api/v1/flows/au.macro/recession_watch" \
     -H "Content-Type: application/x-yaml" \
-    --data-binary @kestra/flows/recession_watch.yml \
-    && return 0
-  return 1
-}
-import_flow
+    --data-binary @kestra/flows/recession_watch.yml
 
-exec_json=$(curl -fsS -X POST "http://127.0.0.1:8080/api/v1/executions/au.macro/recession_watch")
+exec_json=$(curl -fsS -u "$AUTH" -X POST "http://127.0.0.1:8080/api/v1/executions/au.macro/recession_watch")
 exec_id=$(python3 -c "import json,sys; print(json.load(sys.stdin)['id'])" <<<"$exec_json")
 echo "execution $exec_id"
 
 for _ in $(seq 1 80); do
-  state=$(curl -fsS "http://127.0.0.1:8080/api/v1/executions/${exec_id}" \
-    | python3 -c "import json,sys; print(json.load(sys.stdin)['state']['current'])")
+  state=$(curl -fsS -u "$AUTH" "http://127.0.0.1:8080/api/v1/executions/${exec_id}" \
+    | python3 -c "import json,sys; body=json.load(sys.stdin); state=body.get('state') or {}; print(state.get('current') or state.get('name') or 'UNKNOWN')")
   echo "state $state"
   case "$state" in
     SUCCESS) exit 0 ;;

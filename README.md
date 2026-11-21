@@ -197,6 +197,8 @@ make browser                             # Playwright
 make lint
 make snapshot                            # re-download ABS and RBA; needs the network
 make kestra                              # docker compose, then the flow
+# The local Kestra UI asks for a login. Use admin@kestra.io / Admin1234,
+# the sample account from Kestra's own install guide. It only exists inside this container.
 ```
 
 `PYTHONPATH=src` is set by the Makefile. The dashboard is `site/index.html`.
