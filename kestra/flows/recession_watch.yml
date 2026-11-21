@@ -1,0 +1,11 @@
+id: recession_watch
+namespace: au.macro
+description: Rebuild the recession-watch estimates from the committed data snapshot.
+
+tasks:
+  - id: pipeline
+    type: io.kestra.plugin.scripts.shell.Commands
+    taskRunner:
+      type: io.kestra.plugin.core.runner.Process
+    commands:
+      - cd /work && python3 -m recession_watch run --from-snapshot --max-em-iter 8 --backtest-iter 6

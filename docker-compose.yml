@@ -1,0 +1,18 @@
+services:
+  kestra:
+    build: .
+    image: recession-watch-kestra:local
+    user: root
+    command: server local
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/work
+      - kestra-data:/app/storage
+      - kestra-db:/app/data
+    environment:
+      KESTRA_PLUGINS_AUTO_INSTALL_ENABLED: "true"
+
+volumes:
+  kestra-data:
+  kestra-db:
