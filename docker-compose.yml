@@ -1,0 +1,28 @@
+services:
+  kestra:
+    build:
+      context: .
+    platform: linux/amd64
+    image: recession-watch-kestra:local
+    user: root
+    command: server local
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./:/work
+      - kestra-data:/app/storage
+      - kestra-db:/app/data
+    environment:
+      KESTRA_PLUGINS_AUTO_INSTALL_ENABLED: "true"
+      # Local CI login only. Current Kestra requires basic auth and ignores enabled:false.
+      # These are the credentials from Kestra's own local-install docs, not a production secret.
+      KESTRA_CONFIGURATION: |
+        kestra:
+          server:
+            basic-auth:
+              username: admin@kestra.io
+              password: Admin1234
+
+volumes:
+  kestra-data:
+  kestra-db:

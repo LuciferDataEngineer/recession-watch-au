@@ -1,0 +1,256 @@
+{
+  "created_at_utc": "2026-11-21T22:23:54+00:00",
+  "anchors": {
+    "unemployment_oct_2026": 4.9,
+    "employment_change_oct_2026": -43500,
+    "youth_unemployment_oct_2026": 11.3,
+    "cpi_annual_sep_2026": 4.3,
+    "gdp_qoq_2026q2": 0.4,
+    "gdp_pc_qoq_2026q2": 0.0,
+    "cash_rate_target": 4.85,
+    "hsi_mom_sep_2026": 0.6
+  },
+  "nowcast": {
+    "2026Q3": {
+      "gdp": 0.24642409473075266,
+      "gdp_pc": -0.12857590526924734,
+      "population_growth": 0.375
+    },
+    "2026Q4": {
+      "gdp": 0.05242845905076332,
+      "gdp_pc": -0.3225715409492367,
+      "population_growth": 0.375
+    }
+  },
+  "scores": {
+    "n": 28,
+    "n_recent": 14,
+    "rmse_dfm": 2.328322762148474,
+    "rmse_ar1": 1.8401846629207834,
+    "rmse_bridge": 1.3759742168597788,
+    "rmse_mean": 1.827189257535401,
+    "rmse_dfm_recent": 0.20830867282310678,
+    "rmse_ar1_recent": 0.5450595574465592,
+    "rmse_bridge_recent": 0.512800441210501,
+    "rmse_mean_recent": 0.5124650788168942,
+    "brier_dfm": 0.2314508917475222,
+    "brier_logit": 0.0001792858723327107,
+    "brier_base": 0.12009141642956551,
+    "brier_dfm_recent": 0.09827711472399057,
+    "brier_logit_recent": 0.0001792858723327107,
+    "correlation_errors": 0.06073636026545946
+  },
+  "states": [
+    {
+      "code": "1",
+      "name": "New South Wales",
+      "short": "NSW",
+      "jobs_3m_pct": -0.9442292892103077,
+      "unemp": 4.62880887,
+      "unemp_change": 0.3566621200000002,
+      "sfd_qoq": 0.02604699622319462,
+      "approvals_yoy": 5.6671554252199385,
+      "jobs_basis": "seasonally adjusted",
+      "jobs_month": "2026-10",
+      "sfd_quarter": "2026Q2",
+      "pressure": 71.875
+    },
+    {
+      "code": "2",
+      "name": "Victoria",
+      "short": "VIC",
+      "jobs_3m_pct": 0.30270221365016337,
+      "unemp": 5.38922901,
+      "unemp_change": 0.2655688300000003,
+      "sfd_qoq": -0.3408316291751867,
+      "approvals_yoy": -2.5061626951520144,
+      "jobs_basis": "seasonally adjusted",
+      "jobs_month": "2026-10",
+      "sfd_quarter": "2026Q2",
+      "pressure": 68.75
+    },
+    {
+      "code": "6",
+      "name": "Tasmania",
+      "short": "TAS",
+      "jobs_3m_pct": -1.2932163397303853,
+      "unemp": 5.35251504,
+      "unemp_change": 0.32038309,
+      "sfd_qoq": 0.07727975270479526,
+      "approvals_yoy": 13.953488372093027,
+      "jobs_basis": "seasonally adjusted",
+      "jobs_month": "2026-10",
+      "sfd_quarter": "2026Q2",
+      "pressure": 65.625
+    },
+    {
+      "code": "3",
+      "name": "Queensland",
+      "short": "QLD",
+      "jobs_3m_pct": -0.48189531181976886,
+      "unemp": 4.81198021,
+      "unemp_change": 0.5586517899999999,
+      "sfd_qoq": 1.132158268119654,
+      "approvals_yoy": -1.6519556239371624,
+      "jobs_basis": "seasonally adjusted",
+      "jobs_month": "2026-10",
+      "sfd_quarter": "2026Q2",
+      "pressure": 62.5
+    },
+    {
+      "code": "4",
+      "name": "South Australia",
+      "short": "SA",
+      "jobs_3m_pct": -0.30104728608193465,
+      "unemp": 4.80008591,
+      "unemp_change": 0.6601345800000002,
+      "sfd_qoq": 0.004492060283456389,
+      "approvals_yoy": 31.62087912087912,
+      "jobs_basis": "seasonally adjusted",
+      "jobs_month": "2026-10",
+      "sfd_quarter": "2026Q2",
+      "pressure": 62.5
+    },
+    {
+      "code": "7",
+      "name": "Northern Territory",
+      "short": "NT",
+      "jobs_3m_pct": -0.919794805308638,
+      "unemp": 5.01106609,
+      "unemp_change": 0.2258720700000003,
+      "sfd_qoq": 1.3621147408519052,
+      "approvals_yoy": 5.392156862745101,
+      "jobs_basis": "smoothed",
+      "jobs_month": "2026-10",
+      "sfd_quarter": "2026Q2",
+      "pressure": 46.875
+    },
+    {
+      "code": "8",
+      "name": "Australian Capital Territory",
+      "short": "ACT",
+      "jobs_3m_pct": 0.09718008315764415,
+      "unemp": 4.20525607,
+      "unemp_change": 0.07889559000000013,
+      "sfd_qoq": 0.6784843996368695,
+      "approvals_yoy": -1.7006802721088454,
+      "jobs_basis": "smoothed",
+      "jobs_month": "2026-10",
+      "sfd_quarter": "2026Q2",
+      "pressure": 46.875
+    },
+    {
+      "code": "5",
+      "name": "Western Australia",
+      "short": "WA",
+      "jobs_3m_pct": 1.114133607800838,
+      "unemp": 4.47231401,
+      "unemp_change": 0.09843986999999998,
+      "sfd_qoq": 1.0436595535933346,
+      "approvals_yoy": 20.894763599389933,
+      "jobs_basis": "seasonally adjusted",
+      "jobs_month": "2026-10",
+      "sfd_quarter": "2026Q2",
+      "pressure": 25.0
+    }
+  ],
+  "industries": [
+    {
+      "code": "R",
+      "name": "Arts and recreation",
+      "sales_qoq": -0.3,
+      "quarter": "2026Q2"
+    },
+    {
+      "code": "C",
+      "name": "Manufacturing",
+      "sales_qoq": -0.1,
+      "quarter": "2026Q2"
+    },
+    {
+      "code": "L",
+      "name": "Property",
+      "sales_qoq": -0.1,
+      "quarter": "2026Q2"
+    },
+    {
+      "code": "K",
+      "name": "Finance",
+      "sales_qoq": 0.0,
+      "quarter": "2026Q2"
+    },
+    {
+      "code": "G",
+      "name": "Retail",
+      "sales_qoq": 0.4,
+      "quarter": "2026Q2"
+    },
+    {
+      "code": "E",
+      "name": "Construction",
+      "sales_qoq": 0.5,
+      "quarter": "2026Q2"
+    },
+    {
+      "code": "H",
+      "name": "Hospitality",
+      "sales_qoq": 0.5,
+      "quarter": "2026Q2"
+    },
+    {
+      "code": "F",
+      "name": "Wholesale",
+      "sales_qoq": 0.6,
+      "quarter": "2026Q2"
+    },
+    {
+      "code": "S",
+      "name": "Other services",
+      "sales_qoq": 1.0,
+      "quarter": "2026Q2"
+    },
+    {
+      "code": "I",
+      "name": "Transport",
+      "sales_qoq": 1.2,
+      "quarter": "2026Q2"
+    },
+    {
+      "code": "M",
+      "name": "Professional services",
+      "sales_qoq": 2.3,
+      "quarter": "2026Q2"
+    },
+    {
+      "code": "B",
+      "name": "Mining",
+      "sales_qoq": 3.3,
+      "quarter": "2026Q2"
+    }
+  ],
+  "signals": {
+    "month": "2026-10",
+    "unemp": 4.86483265,
+    "unemp_prev": 4.74188818,
+    "sahm_gap": 0.5968174299999998,
+    "yield_spread": 0.26700000000000035,
+    "yield_month": "2026-11",
+    "cash_rate": 4.85,
+    "emp_3m_pct": -0.3361935728354082,
+    "approvals_yoy": 5.161054172767199,
+    "hsi_3m_pct": 1.5598337882029023,
+    "hsi_mom": 0.6496291314560754,
+    "employed": 14738637.3622,
+    "employed_prev": 14782168.10654,
+    "youth_unemp": 11.25045592
+  },
+  "benchmark": {
+    "query": "lagged change in employment and state final demand",
+    "rows": 4066,
+    "repeats": 8,
+    "duckdb_seconds": 0.019052,
+    "datafusion_seconds": 0.005182,
+    "results_match": true,
+    "note": "Times are a single-thread average on this snapshot after one warm-up. The table is small, so the numbers describe fixed overhead more than a warehouse bake-off. Both engines are in-process and free."
+  }
+}

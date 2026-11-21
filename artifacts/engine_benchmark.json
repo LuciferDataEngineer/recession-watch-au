@@ -1,0 +1,9 @@
+{
+  "query": "lagged change in employment and state final demand",
+  "rows": 4066,
+  "repeats": 8,
+  "duckdb_seconds": 0.019052,
+  "datafusion_seconds": 0.005182,
+  "results_match": true,
+  "note": "Times are a single-thread average on this snapshot after one warm-up. The table is small, so the numbers describe fixed overhead more than a warehouse bake-off. Both engines are in-process and free."
+}

@@ -1,0 +1,18 @@
+[project]
+name = "recession-watch-au"
+version = "0.1.0"
+description = "How close is Australia to recession, and where would it hit first?"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
